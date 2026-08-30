@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>&lt;非公式&gt; azooKey Custom Keyboard Editor v3.5.1</title>
+<title>&lt;非公式&gt; azooKey Custom Keyboard Editor v3.5.2</title>
 <style>
 :root{
   --bg:#f3f3f3;--panel:#fff;--line:#d7d7d7;--text:#1f1f1f;--muted:#666;
@@ -1190,7 +1190,7 @@ body.file-dragging{
 .key-context-menu-item.danger{color:var(--danger)}
 
 
-/* v3.5.1: preserve keyboard viewport on short desktop windows */
+/* v3.5.2: preserve keyboard viewport on short desktop windows */
 @media (min-width:1201px) and (max-height:950px){
   .app{
     padding:7px;
@@ -1325,7 +1325,7 @@ body.file-dragging{
 }
 
 
-/* v3.5.1: allow the whole left pane, including top UI, to scroll vertically */
+/* v3.5.2: allow the whole left pane, including top UI, to scroll vertically */
 @media (min-width:1201px){
   .app>section.panel{
     overflow-y:auto !important;
@@ -1374,7 +1374,7 @@ body.file-dragging{
 }
 
 
-/* v3.5.1: zoom owns the rendered SVG dimensions */
+/* v3.5.2: zoom owns the rendered SVG dimensions */
 #keyboardSvg{
   min-width:0;
   max-width:none;
@@ -1382,7 +1382,7 @@ body.file-dragging{
 }
 
 
-/* v3.5.1: public-release safety note */
+/* v3.5.2: public-release safety note */
 .privacy-local-note{
   margin:-2px 0 8px;
   padding:6px 8px;
@@ -1401,13 +1401,79 @@ body.file-dragging{
   }
 }
 
+
+/* v3.5.2: keep the desktop two-pane layout even on narrow/mobile screens.
+   Narrow viewports scroll horizontally instead of stacking the inspector below. */
+@media (max-width:1200px){
+  html,
+  body{
+    height:100%;
+    overflow:auto !important;
+  }
+
+  body{
+    min-width:1120px;
+  }
+
+  .app{
+    width:1120px;
+    min-width:1120px;
+    height:100dvh !important;
+    grid-template-columns:minmax(680px,1fr) 8px 410px !important;
+    gap:8px !important;
+    padding:8px !important;
+    align-items:stretch !important;
+    overflow:visible !important;
+  }
+
+  .app>section.panel{
+    height:calc(100dvh - 16px) !important;
+    min-height:0 !important;
+    overflow-y:auto !important;
+    overflow-x:hidden !important;
+    display:block !important;
+  }
+
+  .app>aside.panel.right{
+    height:calc(100dvh - 16px) !important;
+    min-height:0 !important;
+    overflow-y:auto !important;
+    overflow-x:hidden !important;
+  }
+
+  .panel-resizer{
+    display:block !important;
+  }
+
+  .app>section.panel .canvas{
+    width:100%;
+    min-width:0;
+    min-height:420px !important;
+    height:auto !important;
+    overflow:auto !important;
+  }
+}
+
+/* Slightly more compact fixed desktop canvas for phone-size widths. */
+@media (max-width:700px){
+  body{
+    min-width:1080px;
+  }
+
+  .app{
+    width:1080px;
+    min-width:1080px;
+    grid-template-columns:650px 8px 406px !important;
+  }
+}
+
 </style>
 
 </head>
 <body>
 <div class="app">
   <section class="panel">
-    <h1>&lt;非公式&gt; azooKey Custom Keyboard Editor <span style="font-size:13px;color:#666;font-weight:500">v3.5.1</span></h1>
+    <h1>&lt;非公式&gt; azooKey Custom Keyboard Editor <span style="font-size:13px;color:#666;font-weight:500">v3.5.2</span></h1>
     <div class="toolbar toolbar-organized">
       <div class="toolbar-group" aria-label="ファイル">
         <span class="toolbar-group-label">ファイル</span>
@@ -2351,7 +2417,7 @@ const renderBeforeZoom=render;
 render=function(){renderBeforeZoom();requestAnimationFrame(()=>applyZoom(viewZoom))};
 
 
-// ===== v3.5.1: move selection without moving keys =====
+// ===== v3.5.2: move selection without moving keys =====
 function selectionNavPoint(item,index){
   if(isGridScrollLayout()){
     const layout=scrollLayout();
