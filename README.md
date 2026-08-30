@@ -1,3 +1,7 @@
+## 公開ページ
+
+https://sutbun.github.io/azookey-custard-editor/
+
 # <非公式> azooKey Custom Keyboard Editor
 
 azooKey のカスタムキーボード（Custard）JSONを、ブラウザ上で視覚的に編集するための**非公式ツール**です。
