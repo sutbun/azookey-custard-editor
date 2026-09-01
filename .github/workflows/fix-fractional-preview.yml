@@ -1,0 +1,93 @@
+name: Fix fractional preview geometry
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/fix-fractional-preview.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          t=p.read_text(encoding='utf-8')
+          old="ks.forEach((item,i)=>{const s=item.specifier||{},k=item.key||{},x=outer+Number(s.x||0)*cell+pad,y=outer+Number(s.y||0)*cell+pad,w=Number(s.width||1)*cell-pad*2,h=Number(s.height||1)*cell-pad*2;const group=el('g');"
+          new="ks.forEach((item,i)=>{const s=item.specifier||{},k=item.key||{},rawW=Number(s.width||1)*cell,rawH=Number(s.height||1)*cell,insetX=gridPreviewInset(s.width,cell,pad),insetY=gridPreviewInset(s.height,cell,pad),x=outer+Number(s.x||0)*cell+insetX,y=outer+Number(s.y||0)*cell+insetY,w=Math.max(1,rawW-insetX*2),h=Math.max(1,rawH-insetY*2);const group=el('g');"
+          if t.count(old)!=1: raise SystemExit(f'final renderer match count={t.count(old)}')
+          t=t.replace(old,new,1)
+          old_rect="""function keySvgRect(item) {
+            const s = item.specifier || {};
+            const cell = 72, pad = 4, outer = 18;
+            return {
+              x: outer + Number(s.x||0)*cell + pad,
+              y: outer + Number(s.y||0)*cell + pad,
+              w: Number(s.width||1)*cell - pad*2,
+              h: Number(s.height||1)*cell - pad*2
+            };
+          }"""
+          new_rect="""function keySvgRect(item) {
+            const s = item.specifier || {};
+            const cell = 72, pad = 4, outer = 18;
+            const rawW = Number(s.width||1)*cell;
+            const rawH = Number(s.height||1)*cell;
+            const insetX = gridPreviewInset(s.width,cell,pad);
+            const insetY = gridPreviewInset(s.height,cell,pad);
+            return {
+              x: outer + Number(s.x||0)*cell + insetX,
+              y: outer + Number(s.y||0)*cell + insetY,
+              w: Math.max(1,rawW-insetX*2),
+              h: Math.max(1,rawH-insetY*2)
+            };
+          }"""
+          if t.count(old_rect)!=1: raise SystemExit(f'keySvgRect match count={t.count(old_rect)}')
+          t=t.replace(old_rect,new_rect,1)
+          old_helper="""const GRID_FIT_MIN_SIZE = 0.1;
+          const GRID_FINE_STEP = 0.1;
+
+          function normalizeGridNumber(value) {"""
+          new_helper="""const GRID_FIT_MIN_SIZE = 0.1;
+          const GRID_FINE_STEP = 0.1;
+
+          function gridPreviewInset(size, cell=72, pad=4) {
+            const pixels = Math.max(0, Number(size || 1) * cell);
+            return Math.min(pad, pixels * 0.15);
+          }
+
+          function normalizeGridNumber(value) {"""
+          if t.count(old_helper)!=1: raise SystemExit(f'helper insertion match count={t.count(old_helper)}')
+          t=t.replace(old_helper,new_helper,1)
+          p.write_text(t,encoding='utf-8')
+          PY
+          grep -q 'function gridPreviewInset' index.html
+          grep -q 'w=Math.max(1,rawW-insetX\*2)' index.html
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          text=Path('index.html').read_text(encoding='utf-8')
+          scripts=re.findall(r'<script(?![^>]*application/json)[^>]*>(.*?)</script>',text,re.S)
+          Path('/tmp/editor.js').write_text('\n'.join(scripts),encoding='utf-8')
+          PY
+          node --check /tmp/editor.js
+      - name: Commit fix and remove workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/fix-fractional-preview.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html .github/workflows/fix-fractional-preview.yml
+          git commit -m 'fix: render 0.1-sized grid keys safely'
+          git push origin HEAD:main
