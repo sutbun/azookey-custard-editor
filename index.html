@@ -2356,7 +2356,7 @@ render=function(){
     const rect=el('rect',{x:outer+c*cell+5,y:outer+r*cell+5,width:cell-10,height:cell-10,rx:8,fill:selectedBlank?'#e8f0ff':'transparent',stroke:selectedBlank?'#2563eb':'#cfcfcf','stroke-width':selectedBlank?2:1,'stroke-dasharray':'5 4'});
     rect.addEventListener('click',()=>{selectedIndices.clear();selectedIndex=-1;selectedEmptyCell={x:c,y:r};render();populateForm()});svg.appendChild(rect)
   }
-  ks.forEach((item,i)=>{const s=item.specifier||{},k=item.key||{},x=outer+Number(s.x||0)*cell+pad,y=outer+Number(s.y||0)*cell+pad,w=Number(s.width||1)*cell-pad*2,h=Number(s.height||1)*cell-pad*2;const group=el('g');group.style.cursor='pointer';const isSel=selectedIndices.has(i);const rect=el('rect',{x,y,width:w,height:h,rx:9,fill:colorOf(k.design?.color),stroke:isSel?'#2563eb':'#333','stroke-width':isSel?3:1.3});group.appendChild(rect);
+  ks.forEach((item,i)=>{const s=item.specifier||{},k=item.key||{},rawW=Number(s.width||1)*cell,rawH=Number(s.height||1)*cell,insetX=gridPreviewInset(s.width,cell,pad),insetY=gridPreviewInset(s.height,cell,pad),x=outer+Number(s.x||0)*cell+insetX,y=outer+Number(s.y||0)*cell+insetY,w=Math.max(1,rawW-insetX*2),h=Math.max(1,rawH-insetY*2);const group=el('g');group.style.cursor='pointer';const isSel=selectedIndices.has(i);const rect=el('rect',{x,y,width:w,height:h,rx:9,fill:colorOf(k.design?.color),stroke:isSel?'#2563eb':'#333','stroke-width':isSel?3:1.3});group.appendChild(rect);
     const dirs={top:variation(item,'top'),right:variation(item,'right'),bottom:variation(item,'bottom'),left:variation(item,'left')};const add=(txt,xx,yy,anchor='middle',size=12,weight='400',maxWidth=0)=>appendPreviewText(group,txt,xx,yy,anchor,size,weight,maxWidth);add(displayText(dirs.top?.key),x+w/2,y+17,'middle',12,'400',Math.max(18,w-30));add(displayText(dirs.left?.key),x+8,y+h/2+4,'start',12,'400',Math.max(14,w/2-18));add(displayText(dirs.right?.key),x+w-8,y+h/2+4,'end',12,'400',Math.max(14,w/2-18));add(displayText(dirs.bottom?.key),x+w/2,y+h-8,'middle',12,'400',Math.max(18,w-30));add(displayText(k),x+w/2,y+h/2+7,'middle',21,'700',Math.max(24,w-18));add(`${s.x??0},${s.y??0}`,x+7,y+13,'start',10);add(`${s.width??1}×${s.height??1}`,x+w-7,y+13,'end',10);
     group.addEventListener('click',ev=>{ev.stopPropagation();selectedEmptyCell=null;if(ev.ctrlKey||ev.metaKey){if(selectedIndices.has(i))selectedIndices.delete(i);else selectedIndices.add(i);selectedIndex=selectedIndices.has(i)?i:([...[...selectedIndices]].pop()??-1)}else{selectedIndices=new Set([i]);selectedIndex=i}render();populateForm()});svg.appendChild(group)
   });
@@ -3021,11 +3021,15 @@ function normalizeDragRect(a, b) {
 function keySvgRect(item) {
   const s = item.specifier || {};
   const cell = 72, pad = 4, outer = 18;
+  const rawW = Number(s.width||1)*cell;
+  const rawH = Number(s.height||1)*cell;
+  const insetX = gridPreviewInset(s.width,cell,pad);
+  const insetY = gridPreviewInset(s.height,cell,pad);
   return {
-    x: outer + Number(s.x||0)*cell + pad,
-    y: outer + Number(s.y||0)*cell + pad,
-    w: Number(s.width||1)*cell - pad*2,
-    h: Number(s.height||1)*cell - pad*2
+    x: outer + Number(s.x||0)*cell + insetX,
+    y: outer + Number(s.y||0)*cell + insetY,
+    w: Math.max(1,rawW-insetX*2),
+    h: Math.max(1,rawH-insetY*2)
   };
 }
 function rectIntersectsRect(a,b) {
@@ -4488,6 +4492,11 @@ if(!loadBundledDefaultKeyboard()){
 // ===== v3.6.0: official fractional grid_fit coordinates / sizes =====
 const GRID_FIT_MIN_SIZE = 0.1;
 const GRID_FINE_STEP = 0.1;
+
+function gridPreviewInset(size, cell=72, pad=4) {
+  const pixels = Math.max(0, Number(size || 1) * cell);
+  return Math.min(pad, pixels * 0.15);
+}
 
 function normalizeGridNumber(value) {
   const number = Number(value);
