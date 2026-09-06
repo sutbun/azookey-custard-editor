@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>&lt;非公式&gt; azooKey Custom Keyboard Editor v3.6.3</title>
+<title>&lt;非公式&gt; azooKey Custom Keyboard Editor v3.6.4</title>
 <style>
 :root{
   --bg:#f3f3f3;--panel:#fff;--line:#d7d7d7;--text:#1f1f1f;--muted:#666;
@@ -1497,7 +1497,7 @@ body.file-dragging{
 <body>
 <div class="app">
   <section class="panel">
-    <h1>&lt;非公式&gt; azooKey Custom Keyboard Editor <span style="font-size:13px;color:#666;font-weight:500">v3.6.3</span></h1>
+    <h1>&lt;非公式&gt; azooKey Custom Keyboard Editor <span style="font-size:13px;color:#666;font-weight:500">v3.6.4</span></h1>
     <div class="toolbar toolbar-organized">
       <div class="toolbar-group" aria-label="ファイル">
         <span class="toolbar-group-label">ファイル</span>
@@ -1605,6 +1605,14 @@ body.file-dragging{
           <h3 style="margin:0 0 8px;font-size:13px">グリッド倍率変換</h3>
           <div class="grid2">
             <div class="field">
+              <label for="gridScaleAxis">変換方向</label>
+              <select id="gridScaleAxis">
+                <option value="both">横・縦の両方</option>
+                <option value="horizontal">横だけ</option>
+                <option value="vertical">縦だけ</option>
+              </select>
+            </div>
+            <div class="field">
               <label for="gridScaleFactor">倍率</label>
               <select id="gridScaleFactor">
                 <option value="2">2倍</option>
@@ -1618,7 +1626,7 @@ body.file-dragging{
                 <option value="10">10倍</option>
               </select>
             </div>
-            <div class="field">
+            <div class="field" style="grid-column:1 / -1">
               <label>変換後</label>
               <input id="gridScalePreview" class="readonly" readonly>
             </div>
@@ -2293,7 +2301,8 @@ function ensureRootStructure(){
 }
 function declaredGrid(){ensureRootStructure();return{cols:Math.max(1,Number(data.interface.key_layout.row_count||1)),rows:Math.max(1,Number(data.interface.key_layout.column_count||1))}}
 
-// ===== v3.6.3: scale grid_fit coordinate system without changing appearance =====
+// ===== v3.6.4: scale grid_fit coordinate system by axis without changing appearance =====
+const gridScaleAxis=document.getElementById('gridScaleAxis');
 const gridScaleFactor=document.getElementById('gridScaleFactor');
 const gridScalePreview=document.getElementById('gridScalePreview');
 const gridScaleHint=document.getElementById('gridScaleHint');
@@ -2305,23 +2314,46 @@ function cleanScaledNumber(value){
   return Number(n.toFixed(10));
 }
 
+function gridScaleAxisLabel(axis){
+  if(axis==='horizontal')return '横だけ';
+  if(axis==='vertical')return '縦だけ';
+  return '横・縦の両方';
+}
+
 function updateGridScaleUi(){
   ensureRootStructure();
   const layout=data.interface.key_layout||{};
   const isFit=layout.type==='grid_fit';
   const factor=Math.max(2,Math.min(10,Number(gridScaleFactor.value)||3));
+  const axis=gridScaleAxis.value||'both';
   const cols=Number(layout.row_count||1);
   const rows=Number(layout.column_count||1);
 
-  gridScalePreview.value=isFit
-    ? `${cleanScaledNumber(cols*factor)} × ${cleanScaledNumber(rows*factor)}`
-    : 'grid_fitのみ対応';
+  const afterCols=(axis==='both'||axis==='horizontal')
+    ? cleanScaledNumber(cols*factor)
+    : cols;
+  const afterRows=(axis==='both'||axis==='vertical')
+    ? cleanScaledNumber(rows*factor)
+    : rows;
+
+  gridScalePreview.value=isFit ? `${afterCols} × ${afterRows}` : 'grid_fitのみ対応';
 
   applyGridScaleBtn.disabled=!isFit;
   gridScaleFactor.disabled=!isFit;
-  gridScaleHint.textContent=isFit
-    ? `現在 ${cols} × ${rows} → ${cleanScaledNumber(cols*factor)} × ${cleanScaledNumber(rows*factor)}。全キーの x / y / width / height も ${factor}倍します。`
-    : 'grid_scrollでは倍率変換を使用できません。';
+  gridScaleAxis.disabled=!isFit;
+
+  if(!isFit){
+    gridScaleHint.textContent='grid_scrollでは倍率変換を使用できません。';
+    return;
+  }
+
+  if(axis==='horizontal'){
+    gridScaleHint.textContent=`現在 ${cols} × ${rows} → ${afterCols} × ${afterRows}。row_count と全キーの x / width を ${factor}倍します。y / height は変更しません。`;
+  }else if(axis==='vertical'){
+    gridScaleHint.textContent=`現在 ${cols} × ${rows} → ${afterCols} × ${afterRows}。column_count と全キーの y / height を ${factor}倍します。x / width は変更しません。`;
+  }else{
+    gridScaleHint.textContent=`現在 ${cols} × ${rows} → ${afterCols} × ${afterRows}。全体グリッドと全キーの x / y / width / height を ${factor}倍します。`;
+  }
 }
 
 function scaleGridFitCoordinateSystem(){
@@ -2333,40 +2365,53 @@ function scaleGridFitCoordinateSystem(){
   }
 
   const factor=Math.max(2,Math.min(10,Number(gridScaleFactor.value)||3));
+  const axis=gridScaleAxis.value||'both';
+  const scaleHorizontal=axis==='both'||axis==='horizontal';
+  const scaleVertical=axis==='both'||axis==='vertical';
+
   const beforeCols=Number(layout.row_count||1);
   const beforeRows=Number(layout.column_count||1);
-  const afterCols=cleanScaledNumber(beforeCols*factor);
-  const afterRows=cleanScaledNumber(beforeRows*factor);
+  const afterCols=scaleHorizontal ? cleanScaledNumber(beforeCols*factor) : beforeCols;
+  const afterRows=scaleVertical ? cleanScaledNumber(beforeRows*factor) : beforeRows;
 
-  const message=[
-    `キーボード全体の座標系を ${factor}倍します。`,
+  const changeText=axis==='horizontal'
+    ? `横方向だけを ${factor}倍します。\nrow_count / x / width を変更し、y / height はそのままです。`
+    : axis==='vertical'
+      ? `縦方向だけを ${factor}倍します。\ncolumn_count / y / height を変更し、x / width はそのままです。`
+      : `横・縦の両方を ${factor}倍します。\nrow_count / column_count / x / y / width / height を変更します。`;
+
+  if(!confirm([
+    changeText,
     `${beforeCols} × ${beforeRows} → ${afterCols} × ${afterRows}`,
-    `全キーの位置と大きさも ${factor}倍するため、見た目の比率は維持されます。`,
-    `実行しますか？`
-  ].join('\n');
-
-  if(!confirm(message))return;
+    '対象方向のグリッド数・キー位置・キーサイズを同じ倍率で変換するため、元の配置比率を維持します。',
+    '実行しますか？'
+  ].join('\n')))return;
 
   mutate(()=>{
-    layout.row_count=afterCols;
-    layout.column_count=afterRows;
+    if(scaleHorizontal)layout.row_count=afterCols;
+    if(scaleVertical)layout.column_count=afterRows;
 
     keys().forEach(item=>{
       if(item.specifier_type!=='grid_fit')return;
       const s=item.specifier||(item.specifier={x:0,y:0,width:1,height:1});
-      s.x=cleanScaledNumber(Number(s.x||0)*factor);
-      s.y=cleanScaledNumber(Number(s.y||0)*factor);
-      s.width=cleanScaledNumber(Number(s.width||1)*factor);
-      s.height=cleanScaledNumber(Number(s.height||1)*factor);
+      if(scaleHorizontal){
+        s.x=cleanScaledNumber(Number(s.x||0)*factor);
+        s.width=cleanScaledNumber(Number(s.width||1)*factor);
+      }
+      if(scaleVertical){
+        s.y=cleanScaledNumber(Number(s.y||0)*factor);
+        s.height=cleanScaledNumber(Number(s.height||1)*factor);
+      }
     });
 
     selectedEmptyCell=null;
   });
 
   updateGridScaleUi();
-  setStatus(`grid_fit の座標系を ${factor}倍しました。見た目の比率は維持されています。`);
+  setStatus(`${gridScaleAxisLabel(axis)}を ${factor}倍しました。対象方向の配置比率は維持されています。`);
 }
 
+gridScaleAxis.addEventListener('change',updateGridScaleUi);
 gridScaleFactor.addEventListener('change',updateGridScaleUi);
 applyGridScaleBtn.addEventListener('click',scaleGridFitCoordinateSystem);
 
@@ -3669,7 +3714,7 @@ function clearAllActionDirections() {
 }
 
 
-// ===== v3.6.3: append one action to selected keys =====
+// ===== v3.6.4: append one action to selected keys =====
 const batchActionDirection = document.getElementById('batchActionDirection');
 const batchActionArrayKind = document.getElementById('batchActionArrayKind');
 const batchActionType = document.getElementById('batchActionType');
@@ -4791,7 +4836,7 @@ if(!loadBundledDefaultKeyboard()){
   populateForm();
 }
 
-// ===== v3.6.3: official fractional grid_fit coordinates / sizes =====
+// ===== v3.6.4: official fractional grid_fit coordinates / sizes =====
 const GRID_FIT_MIN_SIZE = 0.1;
 const GRID_FINE_STEP = 0.1;
 
