@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>&lt;非公式&gt; azooKey Custom Keyboard Editor v3.6.2</title>
+<title>&lt;非公式&gt; azooKey Custom Keyboard Editor v3.6.3</title>
 <style>
 :root{
   --bg:#f3f3f3;--panel:#fff;--line:#d7d7d7;--text:#1f1f1f;--muted:#666;
@@ -1497,7 +1497,7 @@ body.file-dragging{
 <body>
 <div class="app">
   <section class="panel">
-    <h1>&lt;非公式&gt; azooKey Custom Keyboard Editor <span style="font-size:13px;color:#666;font-weight:500">v3.6.2</span></h1>
+    <h1>&lt;非公式&gt; azooKey Custom Keyboard Editor <span style="font-size:13px;color:#666;font-weight:500">v3.6.3</span></h1>
     <div class="toolbar toolbar-organized">
       <div class="toolbar-group" aria-label="ファイル">
         <span class="toolbar-group-label">ファイル</span>
@@ -1600,6 +1600,34 @@ body.file-dragging{
         </div>
         <div id="gridLayoutHint" class="hint">azooKeyでは row_count が横方向、column_count が縦方向です。</div>
         <div class="row-actions"><button id="addKeyAtEmptyBtn" class="smallbtn" disabled>選択した空白セルに新規キーを追加</button></div>
+
+        <div class="section" style="margin-top:10px">
+          <h3 style="margin:0 0 8px;font-size:13px">グリッド倍率変換</h3>
+          <div class="grid2">
+            <div class="field">
+              <label for="gridScaleFactor">倍率</label>
+              <select id="gridScaleFactor">
+                <option value="2">2倍</option>
+                <option value="3" selected>3倍</option>
+                <option value="4">4倍</option>
+                <option value="5">5倍</option>
+                <option value="6">6倍</option>
+                <option value="7">7倍</option>
+                <option value="8">8倍</option>
+                <option value="9">9倍</option>
+                <option value="10">10倍</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>変換後</label>
+              <input id="gridScalePreview" class="readonly" readonly>
+            </div>
+          </div>
+          <div class="row-actions">
+            <button id="applyGridScaleBtn" type="button" class="smallbtn">見た目を保ったまま倍率変換</button>
+          </div>
+          <div id="gridScaleHint" class="hint">grid_fit専用です。キーボード全体のグリッド数と、全キーの位置・大きさを同じ倍率で拡大します。</div>
+        </div>
       </div>
       <div class="section">
         <h2>選択中のキー</h2>
@@ -2264,6 +2292,84 @@ function ensureRootStructure(){
   data.interface.keys=data.interface.keys||[];
 }
 function declaredGrid(){ensureRootStructure();return{cols:Math.max(1,Number(data.interface.key_layout.row_count||1)),rows:Math.max(1,Number(data.interface.key_layout.column_count||1))}}
+
+// ===== v3.6.3: scale grid_fit coordinate system without changing appearance =====
+const gridScaleFactor=document.getElementById('gridScaleFactor');
+const gridScalePreview=document.getElementById('gridScalePreview');
+const gridScaleHint=document.getElementById('gridScaleHint');
+const applyGridScaleBtn=document.getElementById('applyGridScaleBtn');
+
+function cleanScaledNumber(value){
+  const n=Number(value);
+  if(!Number.isFinite(n))return 0;
+  return Number(n.toFixed(10));
+}
+
+function updateGridScaleUi(){
+  ensureRootStructure();
+  const layout=data.interface.key_layout||{};
+  const isFit=layout.type==='grid_fit';
+  const factor=Math.max(2,Math.min(10,Number(gridScaleFactor.value)||3));
+  const cols=Number(layout.row_count||1);
+  const rows=Number(layout.column_count||1);
+
+  gridScalePreview.value=isFit
+    ? `${cleanScaledNumber(cols*factor)} × ${cleanScaledNumber(rows*factor)}`
+    : 'grid_fitのみ対応';
+
+  applyGridScaleBtn.disabled=!isFit;
+  gridScaleFactor.disabled=!isFit;
+  gridScaleHint.textContent=isFit
+    ? `現在 ${cols} × ${rows} → ${cleanScaledNumber(cols*factor)} × ${cleanScaledNumber(rows*factor)}。全キーの x / y / width / height も ${factor}倍します。`
+    : 'grid_scrollでは倍率変換を使用できません。';
+}
+
+function scaleGridFitCoordinateSystem(){
+  ensureRootStructure();
+  const layout=data.interface.key_layout||{};
+  if(layout.type!=='grid_fit'){
+    setStatus('グリッド倍率変換は grid_fit でのみ使用できます。','warn');
+    return;
+  }
+
+  const factor=Math.max(2,Math.min(10,Number(gridScaleFactor.value)||3));
+  const beforeCols=Number(layout.row_count||1);
+  const beforeRows=Number(layout.column_count||1);
+  const afterCols=cleanScaledNumber(beforeCols*factor);
+  const afterRows=cleanScaledNumber(beforeRows*factor);
+
+  const message=[
+    `キーボード全体の座標系を ${factor}倍します。`,
+    `${beforeCols} × ${beforeRows} → ${afterCols} × ${afterRows}`,
+    `全キーの位置と大きさも ${factor}倍するため、見た目の比率は維持されます。`,
+    `実行しますか？`
+  ].join('\n');
+
+  if(!confirm(message))return;
+
+  mutate(()=>{
+    layout.row_count=afterCols;
+    layout.column_count=afterRows;
+
+    keys().forEach(item=>{
+      if(item.specifier_type!=='grid_fit')return;
+      const s=item.specifier||(item.specifier={x:0,y:0,width:1,height:1});
+      s.x=cleanScaledNumber(Number(s.x||0)*factor);
+      s.y=cleanScaledNumber(Number(s.y||0)*factor);
+      s.width=cleanScaledNumber(Number(s.width||1)*factor);
+      s.height=cleanScaledNumber(Number(s.height||1)*factor);
+    });
+
+    selectedEmptyCell=null;
+  });
+
+  updateGridScaleUi();
+  setStatus(`grid_fit の座標系を ${factor}倍しました。見た目の比率は維持されています。`);
+}
+
+gridScaleFactor.addEventListener('change',updateGridScaleUi);
+applyGridScaleBtn.addEventListener('click',scaleGridFitCoordinateSystem);
+
 function isCellOccupied(cx,cy){return keys().some(item=>{const s=item.specifier||{};return cx>=Number(s.x||0)&&cx<Number(s.x||0)+Number(s.width||1)&&cy>=Number(s.y||0)&&cy<Number(s.y||0)+Number(s.height||1)})}
 function newCustomKey(x,y){return{specifier_type:'grid_fit',specifier:{x,y,width:1,height:1},key_type:'custom',key:{longpress_actions:{duration:'normal',start:[],repeat:[]},variations:[],design:{label:{text:''},color:'normal'},press_actions:[]}}}
 
@@ -2427,7 +2533,7 @@ render=function(){
 }
 
 const v4Populate=populateForm;
-populateForm=function(){v4Populate();normalizeSelections();if(selectedIndices.size>1&&selected()){selectedSummary.textContent=`${selectedIndices.size}個のキーを選択中（フォームは #${selectedIndex} を表示）`}refreshSfField()}
+populateForm=function(){v4Populate();normalizeSelections();if(selectedIndices.size>1&&selected()){selectedSummary.textContent=`${selectedIndices.size}個のキーを選択中（フォームは #${selectedIndex} を表示）`}refreshSfField();updateGridScaleUi()}
 
 // 変更時にもidentifierとdisplay_nameの不一致を自動修復
 const originalMutate=mutate;
@@ -3563,7 +3669,7 @@ function clearAllActionDirections() {
 }
 
 
-// ===== v3.6.2: append one action to selected keys =====
+// ===== v3.6.3: append one action to selected keys =====
 const batchActionDirection = document.getElementById('batchActionDirection');
 const batchActionArrayKind = document.getElementById('batchActionArrayKind');
 const batchActionType = document.getElementById('batchActionType');
@@ -4685,7 +4791,7 @@ if(!loadBundledDefaultKeyboard()){
   populateForm();
 }
 
-// ===== v3.6.2: official fractional grid_fit coordinates / sizes =====
+// ===== v3.6.3: official fractional grid_fit coordinates / sizes =====
 const GRID_FIT_MIN_SIZE = 0.1;
 const GRID_FINE_STEP = 0.1;
 
