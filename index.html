@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>&lt;非公式&gt; azooKey Custom Keyboard Editor v3.6.1</title>
+<title>&lt;非公式&gt; azooKey Custom Keyboard Editor v3.6.2</title>
 <style>
 :root{
   --bg:#f3f3f3;--panel:#fff;--line:#d7d7d7;--text:#1f1f1f;--muted:#666;
@@ -122,6 +122,29 @@ body.resizing-panels{cursor:col-resize;user-select:none}
   color:#1d4ed8;
   font-weight:700;
 }
+.batch-action-add-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+}
+.batch-action-add-grid .field:last-child{
+  grid-column:1 / -1;
+}
+.batch-action-add-actions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:9px;
+}
+.batch-action-add-actions .hint{
+  flex:1 1 220px;
+}
+@media(max-width:520px){
+  .batch-action-add-grid{grid-template-columns:1fr}
+  .batch-action-add-grid .field:last-child{grid-column:auto}
+}
+
 .dir.copy-selected{
   outline:3px solid #2563eb;
   outline-offset:-3px;
@@ -1474,7 +1497,7 @@ body.file-dragging{
 <body>
 <div class="app">
   <section class="panel">
-    <h1>&lt;非公式&gt; azooKey Custom Keyboard Editor <span style="font-size:13px;color:#666;font-weight:500">v3.6.1</span></h1>
+    <h1>&lt;非公式&gt; azooKey Custom Keyboard Editor <span style="font-size:13px;color:#666;font-weight:500">v3.6.2</span></h1>
     <div class="toolbar toolbar-organized">
       <div class="toolbar-group" aria-label="ファイル">
         <span class="toolbar-group-label">ファイル</span>
@@ -1747,6 +1770,42 @@ body.file-dragging{
             <button type="button" class="smallbtn action-copy-command" data-command="clear">全解除</button>
           </div>
           <div class="hint">選択した方向の press_actions / longpress_actions だけを、選択中のキーへ反映します。表示文字・色・位置は変更しません。</div>
+        </div>
+
+        <div class="section" style="margin-top:10px">
+          <h3 style="margin:0 0 8px;font-size:13px">選択キーへアクションを末尾追加</h3>
+          <div class="batch-action-add-grid">
+            <div class="field">
+              <label for="batchActionDirection">対象</label>
+              <select id="batchActionDirection">
+                <option value="center">中央</option>
+                <option value="top">上フリック</option>
+                <option value="left">左フリック</option>
+                <option value="right">右フリック</option>
+                <option value="bottom">下フリック</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="batchActionArrayKind">追加先</label>
+              <select id="batchActionArrayKind">
+                <option value="press">アクション</option>
+                <option value="longStart">長押し</option>
+                <option value="longRepeat">繰り返し</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="batchActionType">アクション</label>
+              <select id="batchActionType"></select>
+            </div>
+            <div class="field">
+              <label id="batchActionValueLabel" for="batchActionValue">値</label>
+              <input id="batchActionValue" autocomplete="off">
+            </div>
+          </div>
+          <div class="batch-action-add-actions">
+            <button id="appendBatchActionBtn" type="button" class="smallbtn primary">選択キーの末尾に追加</button>
+            <span class="hint">既存アクションは残したまま末尾へ追加します。存在しないフリック方向は作成せずスキップします。</span>
+          </div>
         </div>
         
       </div>
@@ -3503,6 +3562,121 @@ function clearAllActionDirections() {
   updateActionDirectionUi();
 }
 
+
+// ===== v3.6.2: append one action to selected keys =====
+const batchActionDirection = document.getElementById('batchActionDirection');
+const batchActionArrayKind = document.getElementById('batchActionArrayKind');
+const batchActionType = document.getElementById('batchActionType');
+const batchActionValue = document.getElementById('batchActionValue');
+const batchActionValueLabel = document.getElementById('batchActionValueLabel');
+
+function populateBatchActionTypes(){
+  batchActionType.replaceChildren();
+  ACTION_TYPES.filter(Boolean).forEach(type=>{
+    const option=document.createElement('option');
+    option.value=type;
+    option.textContent=`${ACTION_NAMES[type]||type} (${type})`;
+    batchActionType.appendChild(option);
+  });
+  batchActionType.value='input';
+}
+
+const BATCH_ACTION_VALUE_META={
+  input:{label:'入力文字',placeholder:'例: あ',disabled:false},
+  delete:{label:'削除数',placeholder:'例: 1',disabled:false},
+  move_cursor:{label:'移動量',placeholder:'例: -1 / 1',disabled:false},
+  move_tab:{label:'identifier',placeholder:'移動先タブのidentifier',disabled:false},
+  replace_default:{label:'replace_type',placeholder:'例: dakuten（空欄でも可）',disabled:false},
+  smart_delete_default:{label:'値',placeholder:'値は不要です',disabled:true},
+  dismiss_keyboard:{label:'値',placeholder:'値は不要です',disabled:true},
+  toggle_cursor_bar:{label:'値',placeholder:'値は不要です',disabled:true},
+  complete:{label:'値',placeholder:'値は不要です',disabled:true},
+  paste:{label:'値',placeholder:'値は不要です',disabled:true}
+};
+
+function refreshBatchActionValueField(){
+  const meta=BATCH_ACTION_VALUE_META[batchActionType.value]||{label:'値',placeholder:'',disabled:false};
+  batchActionValueLabel.textContent=meta.label;
+  batchActionValue.placeholder=meta.placeholder;
+  batchActionValue.disabled=meta.disabled;
+  if(meta.disabled)batchActionValue.value='';
+}
+
+function batchActionTargetKey(item,direction){
+  if(!item||item.key_type==='system')return null;
+  ensureCustomStructure(item);
+  if(direction==='center')return item.key;
+  return variation(item,direction)?.key||null;
+}
+
+function appendActionToTargetArray(target,kind,action){
+  target.press_actions=Array.isArray(target.press_actions)?target.press_actions:[];
+  target.longpress_actions=target.longpress_actions||{duration:'normal',start:[],repeat:[]};
+  target.longpress_actions.start=Array.isArray(target.longpress_actions.start)?target.longpress_actions.start:[];
+  target.longpress_actions.repeat=Array.isArray(target.longpress_actions.repeat)?target.longpress_actions.repeat:[];
+
+  if(kind==='press')target.press_actions.push(clone(action));
+  else if(kind==='longStart')target.longpress_actions.start.push(clone(action));
+  else target.longpress_actions.repeat.push(clone(action));
+}
+
+function appendBatchActionToSelected(){
+  const selectedIds=selectedList();
+  if(!selectedIds.length){
+    setStatus('アクションを追加するキーを選択してください。','warn');
+    return;
+  }
+
+  const direction=batchActionDirection.value;
+  const kind=batchActionArrayKind.value;
+  const type=batchActionType.value;
+  const action=makeAction(type,batchActionValue.value);
+
+  if(!action){
+    setStatus('追加するアクションを選択してください。','warn');
+    return;
+  }
+
+  const targets=[];
+  let skippedSystem=0;
+  let skippedMissingDirection=0;
+
+  selectedIds.forEach(index=>{
+    const item=keys()[index];
+    if(!item)return;
+    if(item.key_type==='system'){
+      skippedSystem++;
+      return;
+    }
+    const target=batchActionTargetKey(item,direction);
+    if(!target){
+      skippedMissingDirection++;
+      return;
+    }
+    targets.push(target);
+  });
+
+  if(!targets.length){
+    const reasons=[];
+    if(skippedMissingDirection)reasons.push(`${skippedMissingDirection}個は対象フリックなし`);
+    if(skippedSystem)reasons.push(`${skippedSystem}個はシステムキー`);
+    setStatus(`追加できるキーがありません${reasons.length?'（'+reasons.join('、')+'）':''}。`,'warn');
+    return;
+  }
+
+  mutate(()=>targets.forEach(target=>appendActionToTargetArray(target,kind,action)));
+
+  const parts=[`${targets.length}個のキーへ「${ACTION_NAMES[type]||type}」を末尾追加しました。`];
+  if(skippedMissingDirection)parts.push(`${skippedMissingDirection}個は対象フリックがないためスキップ。`);
+  if(skippedSystem)parts.push(`${skippedSystem}個はシステムキーのためスキップ。`);
+  setStatus(parts.join(' '));
+}
+
+populateBatchActionTypes();
+refreshBatchActionValueField();
+batchActionType.addEventListener('change',refreshBatchActionValueField);
+document.getElementById('appendBatchActionBtn').addEventListener('click',appendBatchActionToSelected);
+
 document.querySelectorAll('.action-copy-command').forEach(button => {
   button.addEventListener('click', event => {
     event.stopPropagation();
@@ -4511,7 +4685,7 @@ if(!loadBundledDefaultKeyboard()){
   populateForm();
 }
 
-// ===== v3.6.1: official fractional grid_fit coordinates / sizes =====
+// ===== v3.6.2: official fractional grid_fit coordinates / sizes =====
 const GRID_FIT_MIN_SIZE = 0.1;
 const GRID_FINE_STEP = 0.1;
 
