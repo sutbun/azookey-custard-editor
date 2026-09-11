@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>&lt;非公式&gt; azooKey Custom Keyboard Editor v3.6.5</title>
+<title>&lt;非公式&gt; azooKey Custom Keyboard Editor v3.6.6</title>
 <style>
 :root{
   --bg:#f3f3f3;--panel:#fff;--line:#d7d7d7;--text:#1f1f1f;--muted:#666;
@@ -1497,7 +1497,7 @@ body.file-dragging{
 <body>
 <div class="app">
   <section class="panel">
-    <h1>&lt;非公式&gt; azooKey Custom Keyboard Editor <span style="font-size:13px;color:#666;font-weight:500">v3.6.5</span></h1>
+    <h1>&lt;非公式&gt; azooKey Custom Keyboard Editor <span style="font-size:13px;color:#666;font-weight:500">v3.6.6</span></h1>
     <div class="toolbar toolbar-organized">
       <div class="toolbar-group" aria-label="ファイル">
         <span class="toolbar-group-label">ファイル</span>
@@ -1675,8 +1675,8 @@ body.file-dragging{
           <div class="key-command-block">
             <span class="key-command-label">編集</span>
             <div class="key-command-grid">
-              <button id="copyKeyBtn" class="smallbtn">コピー</button>
-              <button id="pasteKeyBtn" class="smallbtn">ペースト</button>
+              <button id="copyKeyBtn" class="smallbtn" title="同じサイトの別タブ・別ウィンドウでも共有されます">コピー</button>
+              <button id="pasteKeyBtn" class="smallbtn" title="同じサイトの別タブ・別ウィンドウでコピーしたキーも貼り付けできます">ペースト</button>
               <button id="uppercaseSelectedKeysBtn" class="smallbtn">大文字化</button>
               <button id="deleteKeyBtn" class="smallbtn danger">削除</button>
               <button id="swapKeysBtn" class="smallbtn wide-command">2キーの位置を入れ替え</button>
@@ -2047,6 +2047,51 @@ let undoStack = [];
 let redoStack = [];
 let suppressHistory = false;
 let keyClipboard = null;
+
+const SHARED_KEY_CLIPBOARD_STORAGE = 'azookey-editor-key-clipboard-v1';
+
+function saveSharedKeyClipboard(value){
+  try{
+    const payload={
+      version:1,
+      copiedAt:new Date().toISOString(),
+      items:clone(value)
+    };
+    localStorage.setItem(SHARED_KEY_CLIPBOARD_STORAGE,JSON.stringify(payload));
+  }catch(e){
+    console.warn('共有キークリップボードを保存できませんでした',e);
+  }
+}
+
+function loadSharedKeyClipboard(){
+  try{
+    const raw=localStorage.getItem(SHARED_KEY_CLIPBOARD_STORAGE);
+    if(!raw)return null;
+    const payload=JSON.parse(raw);
+    if(!payload || payload.version!==1)return null;
+    if(!Array.isArray(payload.items) && !(payload.items && typeof payload.items==='object'))return null;
+    return clone(payload.items);
+  }catch(e){
+    console.warn('共有キークリップボードを読み込めませんでした',e);
+    return null;
+  }
+}
+
+function currentKeyClipboard(){
+  if(keyClipboard)return keyClipboard;
+  const shared=loadSharedKeyClipboard();
+  if(shared)keyClipboard=shared;
+  return keyClipboard;
+}
+
+window.addEventListener('storage',event=>{
+  if(event.key!==SHARED_KEY_CLIPBOARD_STORAGE)return;
+  keyClipboard=loadSharedKeyClipboard();
+  if(keyClipboard){
+    setStatus('別タブでコピーされたキーを受け取りました。ペーストできます。');
+  }
+});
+
 let selectedEmptyCell = null;
 
 const EDITOR_DISPLAY_SETTINGS_KEY = 'azookey-editor-display-settings-v1';
@@ -2190,12 +2235,14 @@ document.getElementById('moveDownBtn').addEventListener('click',()=>moveSelected
 document.getElementById('copyKeyBtn').addEventListener('click',()=>{
   const item=selected();if(!item)return;
   keyClipboard=clone(item);
-  setStatus(`キー #${selectedIndex} をコピーしました。`);
+  saveSharedKeyClipboard(keyClipboard);
+  setStatus(`キー #${selectedIndex} をコピーしました。別タブでもペーストできます。`);
 });
 document.getElementById('pasteKeyBtn').addEventListener('click',()=>{
-  if(!keyClipboard){setStatus('先にキーをコピーしてください。','warn');return}
+  const clipboard=currentKeyClipboard();
+  if(!clipboard){setStatus('先にキーをコピーしてください。','warn');return}
   pushHistory();
-  const pasted=clone(keyClipboard);
+  const pasted=clone(clipboard);
   pasted.specifier=pasted.specifier||{x:0,y:0,width:1,height:1};
   pasted.specifier.x=Math.max(0,Number(pasted.specifier.x||0)+1);
   keys().push(pasted);
@@ -2306,7 +2353,7 @@ function ensureRootStructure(){
 }
 function declaredGrid(){ensureRootStructure();return{cols:Math.max(1,Number(data.interface.key_layout.row_count||1)),rows:Math.max(1,Number(data.interface.key_layout.column_count||1))}}
 
-// ===== v3.6.5: expand/shrink grid_fit coordinate system by axis =====
+// ===== v3.6.6: expand/shrink grid_fit coordinate system by axis =====
 const gridScaleAxis=document.getElementById('gridScaleAxis');
 const gridScaleFactor=document.getElementById('gridScaleFactor');
 const gridScalePreview=document.getElementById('gridScalePreview');
@@ -2580,9 +2627,9 @@ document.getElementById('clearSelectionBtn').addEventListener('click',()=>{selec
 // 複数コピーは配列として保持
 const oldCopy=document.getElementById('copyKeyBtn');
 oldCopy.replaceWith(oldCopy.cloneNode(true));
-document.getElementById('copyKeyBtn').addEventListener('click',()=>{const ids=selectedList();if(!ids.length)return;keyClipboard=ids.map(i=>clone(keys()[i]));setStatus(`${ids.length}個のキーをコピーしました。`)});
+document.getElementById('copyKeyBtn').addEventListener('click',()=>{const ids=selectedList();if(!ids.length)return;keyClipboard=ids.map(i=>clone(keys()[i]));saveSharedKeyClipboard(keyClipboard);setStatus(`${ids.length}個のキーをコピーしました。別タブでもペーストできます。`)});
 const oldPaste=document.getElementById('pasteKeyBtn');oldPaste.replaceWith(oldPaste.cloneNode(true));
-document.getElementById('pasteKeyBtn').addEventListener('click',()=>{if(!keyClipboard){setStatus('先にキーをコピーしてください。','warn');return}pushHistory();const list=Array.isArray(keyClipboard)?keyClipboard:[keyClipboard];selectedIndices.clear();list.forEach(src=>{const p=clone(src);p.specifier=p.specifier||{x:0,y:0,width:1,height:1};p.specifier.x=Math.max(0,Number(p.specifier.x||0)+1);keys().push(p);selectedIndices.add(keys().length-1)});selectedIndex=[...selectedIndices][0];render();populateForm();setStatus(`${list.length}個のキーをペーストしました。`)});
+document.getElementById('pasteKeyBtn').addEventListener('click',()=>{const clipboard=currentKeyClipboard();if(!clipboard){setStatus('先にキーをコピーしてください。','warn');return}pushHistory();const list=Array.isArray(clipboard)?clipboard:[clipboard];selectedIndices.clear();list.forEach(src=>{const p=clone(src);p.specifier=p.specifier||{x:0,y:0,width:1,height:1};p.specifier.x=Math.max(0,Number(p.specifier.x||0)+1);keys().push(p);selectedIndices.add(keys().length-1)});selectedIndex=[...selectedIndices][0];render();populateForm();setStatus(`${list.length}個のキーをペーストしました。`)});
 const oldDelete=document.getElementById('deleteKeyBtn');oldDelete.replaceWith(oldDelete.cloneNode(true));
 document.getElementById('deleteKeyBtn').addEventListener('click',()=>{const ids=selectedList();if(!ids.length)return;if(!confirm(`${ids.length}個の選択キーを削除しますか？`))return;pushHistory();ids.sort((a,b)=>b-a).forEach(i=>keys().splice(i,1));selectedIndices.clear();selectedIndex=keys().length?Math.min(ids[ids.length-1],keys().length-1):-1;if(selectedIndex>=0)selectedIndices.add(selectedIndex);render();populateForm();setStatus('選択キーを削除しました。元に戻すで復元できます。')});
 
@@ -3766,7 +3813,7 @@ function clearAllActionDirections() {
 }
 
 
-// ===== v3.6.5: append one action to selected keys =====
+// ===== v3.6.6: append one action to selected keys =====
 const batchActionDirection = document.getElementById('batchActionDirection');
 const batchActionArrayKind = document.getElementById('batchActionArrayKind');
 const batchActionType = document.getElementById('batchActionType');
@@ -4888,7 +4935,7 @@ if(!loadBundledDefaultKeyboard()){
   populateForm();
 }
 
-// ===== v3.6.5: official fractional grid_fit coordinates / sizes =====
+// ===== v3.6.6: official fractional grid_fit coordinates / sizes =====
 const GRID_FIT_MIN_SIZE = 0.1;
 const GRID_FINE_STEP = 0.1;
 
